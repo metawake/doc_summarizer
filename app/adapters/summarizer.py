@@ -96,12 +96,7 @@ class OpenAISummarizer:
         return self._summarize_map_reduce(text)
 
     def _summarize_single(self, text: str) -> str:
-        prompt = (
-            "You are a document summarizer. Provide a clear, comprehensive summary "
-            "of the following document. Preserve key facts, figures, and conclusions. "
-            "Use markdown formatting."
-        )
-        return self._call_llm(prompt, text)
+        return self._call_llm(settings.summary_prompt, text)
 
     def _summarize_map_reduce(self, text: str) -> str:
         chunks = chunk_text(text)

@@ -7,6 +7,11 @@ class Settings(BaseSettings):
     max_upload_size_mb: int = 50
     upload_dir: str = "uploads"
     database_url: str = "sqlite:///./documents.db"
+    summary_prompt: str = (
+        "You are a document summarizer. Provide a clear, comprehensive summary "
+        "of the following document. Preserve key facts, figures, and conclusions. "
+        "Keep it concise but thorough. Use markdown formatting."
+    )
 
     model_config = {"env_file": ".env"}
 
