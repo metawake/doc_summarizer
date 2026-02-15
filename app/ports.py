@@ -9,6 +9,8 @@ class PDFParser(Protocol):
 
     def parse(self, file_path: Path) -> str: ...
 
+    def get_page_count(self, file_path: Path) -> int: ...
+
 
 class Summarizer(Protocol):
     """Generates a concise summary from text content."""

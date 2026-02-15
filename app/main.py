@@ -69,7 +69,8 @@ def upload_pdf(file: UploadFile, db: Session = Depends(get_db)) -> SummaryRespon
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are accepted")
 
-    file_path = UPLOAD_DIR / file.filename
+    safe_name = Path(file.filename).name
+    file_path = UPLOAD_DIR / safe_name
     try:
         with file_path.open("wb") as f:
             shutil.copyfileobj(file.file, f)
