@@ -36,8 +36,8 @@ target-version = "py312"
 line-length = 99
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "N", "UP", "B", "SIM", "RUF"]
-ignore = ["B008"]  # Depends() in function defaults is standard FastAPI pattern
+select = ["E", "F", "I", "N", "UP", "B", "SIM", "RUF", "FAST"]
+ignore = []
 
 [tool.ruff.lint.isort]
 known-first-party = ["app"]

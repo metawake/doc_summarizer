@@ -3,7 +3,9 @@ import shutil
 import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import datetime
 from pathlib import Path
+from typing import Annotated
 
 from fastapi import Depends, FastAPI, HTTPException, UploadFile
 from fastapi.responses import FileResponse
@@ -18,6 +20,7 @@ from app.adapters.summarizer import OpenAISummarizer
 from app.config import settings
 from app.database import get_db, init_db
 from app.domain import Document
+from app.ports import PDFParser, Summarizer
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -27,9 +30,22 @@ UPLOAD_DIR.mkdir(exist_ok=True)
 
 static_dir = Path(__file__).parent.parent / "static"
 
-# adapters
-pdf_parser = PyMuPDFParser()
-summarizer = OpenAISummarizer()
+# adapter singletons - returned via Depends() so they're swappable in tests
+_pdf_parser = PyMuPDFParser()
+_summarizer = OpenAISummarizer()
+
+
+def get_pdf_parser() -> PDFParser:
+    return _pdf_parser
+
+
+def get_summarizer() -> Summarizer:
+    return _summarizer
+
+
+DbSession = Annotated[Session, Depends(get_db)]
+PdfParserDep = Annotated[PDFParser, Depends(get_pdf_parser)]
+SummarizerDep = Annotated[Summarizer, Depends(get_summarizer)]
 
 
 class SummaryResponse(BaseModel):
@@ -37,7 +53,7 @@ class SummaryResponse(BaseModel):
     filename: str
     summary: str
     page_count: int
-    created_at: str
+    created_at: datetime
 
 
 class HistoryResponse(BaseModel):
@@ -64,8 +80,10 @@ def health_check() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@app.post("/api/upload", response_model=SummaryResponse)
-def upload_pdf(file: UploadFile, db: Session = Depends(get_db)) -> SummaryResponse:
+@app.post("/api/upload")
+def upload_pdf(
+    file: UploadFile, db: DbSession, parser: PdfParserDep, ai: SummarizerDep
+) -> SummaryResponse:
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are accepted")
 
@@ -86,9 +104,9 @@ def upload_pdf(file: UploadFile, db: Session = Depends(get_db)) -> SummaryRespon
         logger.info("Processing %s (%.1f MB)", file.filename, file_size_mb)
         start = time.time()
 
-        md_text = pdf_parser.parse(file_path)
-        page_count = pdf_parser.get_page_count(file_path)
-        summary = summarizer.summarize(md_text)
+        md_text = parser.parse(file_path)
+        page_count = parser.get_page_count(file_path)
+        summary = ai.summarize(md_text)
 
         elapsed = time.time() - start
         logger.info("Completed %s: %d pages in %.1fs", file.filename, page_count, elapsed)
@@ -102,7 +120,7 @@ def upload_pdf(file: UploadFile, db: Session = Depends(get_db)) -> SummaryRespon
             filename=doc.filename,
             summary=doc.summary,
             page_count=doc.page_count,
-            created_at=doc.created_at.isoformat(),
+            created_at=doc.created_at,
         )
 
     except HTTPException:
@@ -126,8 +144,8 @@ def upload_pdf(file: UploadFile, db: Session = Depends(get_db)) -> SummaryRespon
         file_path.unlink(missing_ok=True)
 
 
-@app.get("/api/history", response_model=HistoryResponse)
-def get_history(db: Session = Depends(get_db)) -> HistoryResponse:
+@app.get("/api/history")
+def get_history(db: DbSession) -> HistoryResponse:
     repo = SQLiteRepository(db)
     docs = repo.get_recent(limit=5)
     return HistoryResponse(
@@ -137,7 +155,7 @@ def get_history(db: Session = Depends(get_db)) -> HistoryResponse:
                 filename=d.filename,
                 summary=d.summary,
                 page_count=d.page_count,
-                created_at=d.created_at.isoformat(),
+                created_at=d.created_at,
             )
             for d in docs
         ]
