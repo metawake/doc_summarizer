@@ -1,0 +1,9 @@
+.venv
+.git
+.cursor
+__pycache__
+*.db
+*.sqlite3
+.env
+.DS_Store
+uploads/
