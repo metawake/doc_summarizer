@@ -22,7 +22,8 @@
                         file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" />
                     <button type="submit" id="submitBtn"
                         class="px-5 py-2 bg-blue-600 text-white rounded text-sm font-medium
-                        hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap">
+                        hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                        title="Summarizes using GPT-4o-mini with map-reduce for large documents">
                         Summarize
                     </button>
                 </div>
@@ -33,7 +34,11 @@
             <div id="progress" class="hidden mt-4">
                 <div class="flex items-center gap-3">
                     <div class="animate-spin h-5 w-5 border-2 border-blue-600 border-t-transparent rounded-full"></div>
-                    <span class="text-sm text-gray-600">Processing document... This may take a moment for large files.</span>
+                    <span class="text-sm text-gray-600">Processing document... <span id="elapsed" class="font-mono">0s</span></span>
+                    <button onclick="cancelUpload()" type="button"
+                        class="text-xs px-2 py-1 text-red-500 hover:text-red-700 border border-red-200 rounded hover:bg-red-50">
+                        Cancel
+                    </button>
                 </div>
             </div>
 
@@ -77,6 +82,29 @@
         const summaryText = document.getElementById('summaryText');
         const pageInfo = document.getElementById('pageInfo');
         const historyEl = document.getElementById('history');
+        let abortController = null;
+        let timerInterval = null;
+
+        function startTimer() {
+            const el = document.getElementById('elapsed');
+            const start = Date.now();
+            el.textContent = '0s';
+            timerInterval = setInterval(() => {
+                el.textContent = Math.floor((Date.now() - start) / 1000) + 's';
+            }, 1000);
+        }
+
+        function stopTimer() {
+            if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+        }
+
+        function cancelUpload() {
+            if (abortController) {
+                abortController.abort();
+                abortController = null;
+            }
+            stopTimer();
+        }
 
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -91,6 +119,8 @@
             }
 
             // reset state
+            abortController = new AbortController();
+            startTimer();
             progress.classList.remove('hidden');
             error.classList.add('hidden');
             result.classList.add('hidden');
@@ -100,7 +130,7 @@
             formData.append('file', file);
 
             try {
-                const res = await fetch('/api/upload', { method: 'POST', body: formData });
+                const res = await fetch('/api/upload', { method: 'POST', body: formData, signal: abortController.signal });
                 const data = await res.json();
 
                 if (!res.ok) {
@@ -108,14 +138,20 @@
                 }
 
                 lastSummaryRaw = data.summary;
+                const elapsed = document.getElementById('elapsed').textContent;
                 summaryText.innerHTML = markdownToHtml(data.summary);
-                pageInfo.textContent = `${data.page_count}p · ${new Date(data.created_at).toLocaleString()}`;
+                pageInfo.textContent = `${data.page_count} pages · summarized in ${elapsed} · ${new Date(data.created_at).toLocaleString()}`;
                 result.classList.remove('hidden');
                 loadHistory();
             } catch (err) {
-                error.textContent = err.message;
-                error.classList.remove('hidden');
+                if (err.name === 'AbortError') {
+                    // user cancelled, no error to show
+                } else {
+                    error.textContent = err.message;
+                    error.classList.remove('hidden');
+                }
             } finally {
+                stopTimer();
                 progress.classList.add('hidden');
                 submitBtn.disabled = false;
             }
