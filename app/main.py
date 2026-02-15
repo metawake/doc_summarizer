@@ -1,5 +1,6 @@
 import logging
 import shutil
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -82,10 +83,14 @@ def upload_pdf(file: UploadFile, db: Session = Depends(get_db)) -> SummaryRespon
             )
 
         logger.info("Processing %s (%.1f MB)", file.filename, file_size_mb)
+        start = time.time()
 
         md_text = pdf_parser.parse(file_path)
         page_count = pdf_parser.get_page_count(file_path)
         summary = summarizer.summarize(md_text)
+
+        elapsed = time.time() - start
+        logger.info("Completed %s: %d pages in %.1fs", file.filename, page_count, elapsed)
 
         repo = SQLiteRepository(db)
         doc = Document(filename=file.filename, summary=summary, page_count=page_count)
