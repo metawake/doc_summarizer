@@ -7,6 +7,7 @@ from pathlib import Path
 from fastapi import Depends, FastAPI, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from openai import APIError, AuthenticationError
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -100,6 +101,18 @@ def upload_pdf(file: UploadFile, db: Session = Depends(get_db)) -> SummaryRespon
 
     except HTTPException:
         raise
+    except AuthenticationError as e:
+        logger.error("OpenAI API key is missing or invalid")
+        raise HTTPException(
+            status_code=503,
+            detail="AI service is not configured. Please check the API key.",
+        ) from e
+    except APIError as e:
+        logger.error("OpenAI API error: %s", e)
+        msg = "AI service is temporarily unavailable. Please try again later."
+        if "insufficient_quota" in str(e):
+            msg = "AI service quota exceeded. Please try again later."
+        raise HTTPException(status_code=503, detail=msg) from e
     except Exception as e:
         logger.exception("Failed to process %s", file.filename)
         raise HTTPException(status_code=500, detail=f"Processing failed: {e}") from e

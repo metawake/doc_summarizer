@@ -42,9 +42,19 @@
 
             <!-- Result -->
             <div id="result" class="hidden mt-6">
-                <h3 class="text-sm font-medium text-gray-700 mb-2">Summary</h3>
-                <div id="summaryText" class="prose prose-sm max-w-none bg-gray-50 rounded p-4 text-gray-800"></div>
-                <p id="pageInfo" class="mt-2 text-xs text-gray-400"></p>
+                <details open class="bg-gray-50 rounded">
+                    <summary class="flex justify-between items-center p-3 cursor-pointer">
+                        <h3 class="text-sm font-medium text-gray-700">Summary</h3>
+                        <div class="flex items-center gap-2">
+                            <span id="pageInfo" class="text-xs text-gray-400"></span>
+                            <button onclick="copySummary()" type="button"
+                                class="text-xs px-2 py-1 text-gray-500 hover:text-gray-700 border border-gray-200 rounded hover:bg-gray-100">
+                                Copy
+                            </button>
+                        </div>
+                    </summary>
+                    <div id="summaryText" class="prose prose-sm max-w-none p-4 pt-0 text-gray-800"></div>
+                </details>
             </div>
         </div>
 
@@ -73,6 +83,13 @@
             const file = fileInput.files[0];
             if (!file) return;
 
+            const MAX_SIZE_MB = 50;
+            if (file.size > MAX_SIZE_MB * 1024 * 1024) {
+                error.textContent = `File is too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Max ${MAX_SIZE_MB} MB.`;
+                error.classList.remove('hidden');
+                return;
+            }
+
             // reset state
             progress.classList.remove('hidden');
             error.classList.add('hidden');
@@ -90,8 +107,9 @@
                     throw new Error(data.detail || 'Upload failed');
                 }
 
+                lastSummaryRaw = data.summary;
                 summaryText.innerHTML = markdownToHtml(data.summary);
-                pageInfo.textContent = `${data.page_count} page(s) · processed ${new Date(data.created_at).toLocaleString()}`;
+                pageInfo.textContent = `${data.page_count}p · ${new Date(data.created_at).toLocaleString()}`;
                 result.classList.remove('hidden');
                 loadHistory();
             } catch (err) {
@@ -113,13 +131,19 @@
                     return;
                 }
 
-                historyEl.innerHTML = data.documents.map(doc => `
+                historyEl.innerHTML = data.documents.map((doc, i) => `
                     <details class="bg-white rounded-lg shadow p-4 cursor-pointer">
                         <summary class="flex justify-between items-center">
                             <span class="text-sm font-medium text-gray-800">${escapeHtml(doc.filename)}</span>
                             <span class="text-xs text-gray-400">${doc.page_count}p · ${new Date(doc.created_at).toLocaleDateString()}</span>
                         </summary>
-                        <div class="mt-3 prose prose-sm max-w-none text-gray-700">${markdownToHtml(doc.summary)}</div>
+                        <div class="mt-3 flex justify-end">
+                            <button onclick="copyText('hist-${i}')" type="button"
+                                class="text-xs px-2 py-1 text-gray-500 hover:text-gray-700 border border-gray-200 rounded hover:bg-gray-100">
+                                Copy
+                            </button>
+                        </div>
+                        <div id="hist-${i}" class="prose prose-sm max-w-none text-gray-700">${markdownToHtml(doc.summary)}</div>
                     </details>
                 `).join('');
             } catch (err) {
@@ -144,6 +168,29 @@
             const div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
+        }
+
+        let lastSummaryRaw = '';
+
+        function copySummary() {
+            navigator.clipboard.writeText(lastSummaryRaw).then(() => {
+                showCopyFeedback(event.target);
+            });
+        }
+
+        function copyText(elId) {
+            const el = document.getElementById(elId);
+            if (el) {
+                navigator.clipboard.writeText(el.innerText).then(() => {
+                    showCopyFeedback(event.target);
+                });
+            }
+        }
+
+        function showCopyFeedback(btn) {
+            const orig = btn.textContent;
+            btn.textContent = 'Copied';
+            setTimeout(() => { btn.textContent = orig; }, 1500);
         }
 
         // load history on page load
